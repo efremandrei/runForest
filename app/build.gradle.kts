@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -7,6 +9,11 @@ plugins {
 
 val runForestVersionCode = providers.gradleProperty("runForestVersionCode").get().toInt()
 val runForestVersionName = providers.gradleProperty("runForestVersionName").get()
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+val updateSigningStorePath = localProperties.getProperty("runForest.signingStoreFile")
 
 android {
     namespace = "com.andre.speedtest"
@@ -36,8 +43,21 @@ android {
         buildConfig = true
     }
 
+    val updateCompatibleSigning = updateSigningStorePath?.let { path ->
+        signingConfigs.create("updateCompatible") {
+            storeFile = rootProject.file(path)
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            updateCompatibleSigning?.let { signingConfig = it }
+        }
         release {
+            updateCompatibleSigning?.let { signingConfig = it }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
