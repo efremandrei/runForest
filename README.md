@@ -31,6 +31,8 @@ This app uses no paid runtime services, paid API keys, Firebase, advertising, pa
 
 ## Build and verify
 
+Update-compatible builds read `runForest.signingStoreFile` from the ignored local `local.properties`. On the release machine it points to the same keystore used by v0.1.0. Keep that private key available and run the signer comparison before every publication; another debug keystore produces an APK that Android treats as a different application signer.
+
 ```powershell
 .\gradlew.bat testDebugUnitTest
 .\gradlew.bat lintDebug

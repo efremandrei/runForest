@@ -9,6 +9,7 @@
 - Added evidence-based issue diagnosis, a 0-100 score, cautious likely-cause language, and practical actions.
 - Added an in-app auto-scrolling live diagnostic log plus timestamped text export.
 - Updated history JSON export to include full evaluation diagnostics.
+- Explicitly uses the original v0.1.0 signing key from ignored local configuration so build 2 installs as an in-place update.
 - Runtime services remain M-Lab NDT7 only; no paid services, Firebase, advertising, analytics, or cloud sync.
 
 ## 0.1.0 build 1
