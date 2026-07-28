@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -490,10 +492,28 @@ private fun ConsentDialog(actions: SpeedTestViewModel) {
 
 @Composable
 private fun AboutDialog(actions: SpeedTestViewModel) {
+    val uriHandler = LocalUriHandler.current
     AlertDialog(
         onDismissRequest = { actions.requestAbout(false) },
         title = { Text("About runForest") },
-        text = { Text("Internet connection evaluation for Android\n\nDeveloper: Andrei Efremuahkin\nEmail: andrei.efr@gmail.com\nGitHub: github.com/efremandrei/runForest\nVersion: ${BuildConfig.VERSION_NAME} build ${BuildConfig.VERSION_CODE}\n\nNo paid runtime services are used.") },
+        text = {
+            Column {
+                Text("Developer: Andrei Efremushkin")
+                Text(
+                    "Email: andrei.efr@gmail.com",
+                    modifier = Modifier.clickable {
+                        uriHandler.openUri("mailto:andrei.efr@gmail.com")
+                    }
+                )
+                Text(
+                    "GitHub: https://github.com/efremandrei/runForest",
+                    modifier = Modifier.clickable {
+                        uriHandler.openUri("https://github.com/efremandrei/runForest")
+                    }
+                )
+                Text("Version: ${BuildConfig.VERSION_NAME}/${BuildConfig.VERSION_CODE}")
+            }
+        },
         confirmButton = { Button(onClick = { actions.requestAbout(false) }) { Text("Close") } }
     )
 }
