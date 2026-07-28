@@ -2,7 +2,9 @@ package com.andre.speedtest
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiInfo
 import android.os.Build
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -35,7 +37,10 @@ data class PhaseMeasurement(
     val megabitsPerSecond: Double,
     val bytesTransferred: Long,
     val durationMillis: Long,
-    val sampleCount: Int
+    val sampleCount: Int,
+    val serverRttMillis: Long? = null,
+    val serverRttVariationMillis: Long? = null,
+    val totalRetransmissions: Long? = null
 )
 
 data class NetworkSnapshot(
@@ -44,6 +49,16 @@ data class NetworkSnapshot(
     val roaming: Boolean,
     val vpn: Boolean,
     val validated: Boolean,
+    val captivePortal: Boolean,
+    val estimatedDownstreamMbps: Int,
+    val estimatedUpstreamMbps: Int,
+    val interfaceName: String,
+    val dnsServers: List<String>,
+    val privateDnsActive: Boolean,
+    val wifiSignalDbm: Int? = null,
+    val wifiRxLinkMbps: Int? = null,
+    val wifiTxLinkMbps: Int? = null,
+    val wifiFrequencyMhz: Int? = null,
     val device: String = "${Build.MANUFACTURER} ${Build.MODEL}",
     val android: String = "Android ${Build.VERSION.RELEASE} API ${Build.VERSION.SDK_INT}",
     val abi: String = Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
@@ -60,20 +75,38 @@ data class TestDiagnostic(
     val rawDetails: String = ""
 )
 
+enum class LogLevel { INFO, WARN, ERROR }
+
+data class LiveLogEntry(
+    val timestampMillis: Long = System.currentTimeMillis(),
+    val level: LogLevel,
+    val source: String,
+    val message: String
+)
+
 sealed interface SpeedTestEvent {
     data object LocatingServer : SpeedTestEvent
+    data class Stage(val name: String) : SpeedTestEvent
     data class ServerSelected(val server: ServerInfo) : SpeedTestEvent
     data class DownloadProgress(val mbps: Double, val bytes: Long, val elapsedMillis: Long) : SpeedTestEvent
     data class UploadProgress(val mbps: Double, val bytes: Long, val elapsedMillis: Long) : SpeedTestEvent
+    data class Log(val entry: LiveLogEntry) : SpeedTestEvent
     data class Completed(
         val download: PhaseMeasurement,
         val upload: PhaseMeasurement,
         val latencyMillis: Long,
+        val loadedLatencyMillis: Long,
         val jitterMillis: Long,
+        val probeFailures: Int,
+        val probeAttempts: Int,
         val server: ServerInfo,
+        val evaluation: ConnectionEvaluation,
         val diagnostic: TestDiagnostic
     ) : SpeedTestEvent
-    data class Failed(val diagnostic: TestDiagnostic) : SpeedTestEvent
+    data class Failed(
+        val diagnostic: TestDiagnostic,
+        val evaluation: ConnectionEvaluation? = null
+    ) : SpeedTestEvent
     data object Cancelled : SpeedTestEvent
 }
 
@@ -158,12 +191,20 @@ object SpeedMath {
         return (bytes * 8.0) / millis / 1000.0
     }
 
-    fun quality(downloadMbps: Double, uploadMbps: Double, latencyMillis: Long): String = when {
-        downloadMbps >= 100 && uploadMbps >= 20 && latencyMillis <= 40 -> "Excellent"
-        downloadMbps >= 50 && uploadMbps >= 10 && latencyMillis <= 70 -> "Strong"
-        downloadMbps >= 25 && uploadMbps >= 5 && latencyMillis <= 100 -> "Good"
-        downloadMbps >= 10 && uploadMbps >= 2 -> "Usable"
-        else -> "Limited"
+    fun median(values: List<Long>): Long {
+        if (values.isEmpty()) return 0
+        val sorted = values.sorted()
+        val middle = sorted.size / 2
+        return if (sorted.size % 2 == 0) {
+            (sorted[middle - 1] + sorted[middle]) / 2
+        } else {
+            sorted[middle]
+        }
+    }
+
+    fun jitter(values: List<Long>): Long {
+        if (values.size < 2) return 0
+        return median(values.zipWithNext { first, second -> kotlin.math.abs(second - first) })
     }
 
     fun formatMbps(value: Double): String = String.format(Locale.US, "%.1f", value)
@@ -174,6 +215,7 @@ object NetworkInspector {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = cm.activeNetwork
         val caps = network?.let { cm.getNetworkCapabilities(it) }
+        val link = network?.let { cm.getLinkProperties(it) }
         val type = when {
             caps == null -> "Offline"
             caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
@@ -184,10 +226,30 @@ object NetworkInspector {
         return NetworkSnapshot(
             type = type,
             metered = cm.isActiveNetworkMetered,
-            roaming = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) == false,
+            roaming = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+                caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) == false,
             vpn = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true,
-            validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+            validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
+            captivePortal = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true,
+            estimatedDownstreamMbps = (caps?.linkDownstreamBandwidthKbps ?: 0) / 1000,
+            estimatedUpstreamMbps = (caps?.linkUpstreamBandwidthKbps ?: 0) / 1000,
+            interfaceName = link?.interfaceName.orEmpty(),
+            dnsServers = link?.dnsServers?.map { it.hostAddress ?: it.toString() }.orEmpty(),
+            privateDnsActive = link.isPrivateDnsActiveCompat(),
+            wifiSignalDbm = caps.wifiInfo()?.rssi?.takeIf { it in -126..-1 },
+            wifiRxLinkMbps = caps.wifiInfo()?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.rxLinkSpeedMbps else it.linkSpeed
+            }?.takeIf { it >= 0 },
+            wifiTxLinkMbps = caps.wifiInfo()?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.txLinkSpeedMbps else it.linkSpeed
+            }?.takeIf { it >= 0 },
+            wifiFrequencyMhz = caps.wifiInfo()?.frequency?.takeIf { it > 0 }
         )
     }
-}
 
+    private fun NetworkCapabilities?.wifiInfo(): WifiInfo? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) this?.transportInfo as? WifiInfo else null
+
+    private fun LinkProperties?.isPrivateDnsActiveCompat(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && this?.isPrivateDnsActive == true
+}
