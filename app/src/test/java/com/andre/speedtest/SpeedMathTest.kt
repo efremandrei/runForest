@@ -1,6 +1,7 @@
 package com.andre.speedtest
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SpeedMathTest {
@@ -16,12 +17,61 @@ class SpeedMathTest {
     }
 
     @Test
-    fun classifiesQuality() {
-        assertEquals("Excellent", SpeedMath.quality(150.0, 40.0, 20))
-        assertEquals("Strong", SpeedMath.quality(60.0, 15.0, 60))
-        assertEquals("Good", SpeedMath.quality(30.0, 8.0, 90))
-        assertEquals("Usable", SpeedMath.quality(12.0, 3.0, 200))
-        assertEquals("Limited", SpeedMath.quality(3.0, 1.0, 200))
+    fun calculatesMedianAndConnectionTimeJitter() {
+        assertEquals(24, SpeedMath.median(listOf(20, 24, 40)))
+        assertEquals(15, SpeedMath.median(listOf(5, 10, 20, 40)))
+        assertEquals(4, SpeedMath.jitter(listOf(20, 24, 21, 29)))
     }
-}
 
+    @Test
+    fun identifiesQueueingUnderLoad() {
+        val result = ConnectionEvaluator.evaluate(
+            network = network(),
+            downloadMbps = 100.0,
+            uploadMbps = 30.0,
+            idleLatencyMillis = 20,
+            loadedLatencyMillis = 240,
+            jitterMillis = 3,
+            probeFailures = 0,
+            probeAttempts = 20
+        )
+
+        assertTrue(result.findings.any { it.title == "Severe queueing under load" })
+        assertTrue(result.score < 90)
+    }
+
+    @Test
+    fun reportsUnvalidatedNetworkAsCritical() {
+        val result = ConnectionEvaluator.evaluate(
+            network = network(validated = false),
+            downloadMbps = 0.0,
+            uploadMbps = 0.0,
+            idleLatencyMillis = 0,
+            loadedLatencyMillis = 0,
+            jitterMillis = 0,
+            probeFailures = 0,
+            probeAttempts = 0
+        )
+
+        assertTrue(result.findings.any { it.severity == FindingSeverity.CRITICAL })
+        assertEquals("Poor", result.verdict)
+    }
+
+    private fun network(validated: Boolean = true) = NetworkSnapshot(
+        type = "Wi-Fi",
+        metered = false,
+        roaming = false,
+        vpn = false,
+        validated = validated,
+        captivePortal = false,
+        estimatedDownstreamMbps = 100,
+        estimatedUpstreamMbps = 30,
+        interfaceName = "wlan0",
+        dnsServers = listOf("192.0.2.1"),
+        privateDnsActive = true,
+        wifiSignalDbm = -55,
+        device = "Test device",
+        android = "Android test",
+        abi = "arm64-v8a"
+    )
+}
