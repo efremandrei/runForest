@@ -1,24 +1,33 @@
-# Speed Test
+# runForest
 
-Android speed test app for real, informative network checks using M-Lab NDT7.
+`runForest` is an Android internet-connection evaluation app. It measures speed, but its main job is to explain connection quality and expose the evidence behind each conclusion.
 
-## What is implemented
+## Evaluation model
 
-- Real M-Lab Locate API v2 server selection.
-- NDT7 WebSocket download and upload phases.
-- First-run M-Lab consent notice.
-- Local Room history with future cloud-sync fields, but no cloud service in v1.
-- Technical diagnostics panel with network, device, server, phase, byte, and error details.
-- JSON history export to the app external files directory.
-- Dark-first theme with top Moon/Sun controls and saved preference.
-- About popup with Andrei Efremuahkin, `andrei.efr@gmail.com`, version, build, and GitHub placeholder.
-- ARM64-only APK packaging for Samsung-compatible phones.
+- Android network state: validated internet, captive portal, metered/roaming status, VPN, interface, DNS, Private DNS, estimated link bandwidth, and available Wi-Fi radio details.
+- DNS and M-Lab reachability timing.
+- Five idle TCP connection-time samples to the selected M-Lab server.
+- Real M-Lab NDT7 download and upload throughput.
+- Repeated connection-time samples while download/upload traffic is active, used to identify possible queueing under load.
+- Connection-time jitter, failed probe count, and M-Lab TCP telemetry when the server reports it.
+- Evidence-based findings with an action for weak Wi-Fi, high or variable latency, queueing under load, low capacity, failed probes, VPN, and metered connections.
+
+The diagnosis is intentionally cautious. A phone-side test can identify symptoms and likely causes, but it cannot prove whether every bottleneck is in Wi-Fi, the router, the provider, or the wider route from a single run.
+
+Research basis:
+
+- Android `NetworkCapabilities` and `LinkProperties`: https://developer.android.com/develop/connectivity/network-ops/reading-network-state
+- Android `WifiInfo`: https://developer.android.com/reference/android/net/wifi/WifiInfo
+- M-Lab NDT7 protocol and TCP metrics: https://www.measurementlab.net/tests/ndt/ndt7/
+- IETF discussion of network quality and latency under load: https://www.rfc-editor.org/rfc/rfc9318.html
+
+## Live diagnostics and export
+
+The in-app live log updates during DNS, server selection, idle probes, loaded probes, NDT7 phase changes, progress, failures, and final evaluation. It can be cleared or exported as a timestamped text file through Android's share sheet. Evaluation history exports as JSON through the same share flow and includes detailed findings.
 
 ## No paid services
 
-This v1 uses no paid runtime services. It does not use Firebase, paid analytics, paid API keys, a paid cloud backend, or hosted speed-test servers. M-Lab has rate limits and privacy/data-publication requirements, so the app requires consent before running tests.
-
-The user's own mobile/Wi-Fi data can still be consumed by a speed test.
+This app uses no paid runtime services, paid API keys, Firebase, advertising, paid analytics, app-owned cloud backend, or cloud sync. M-Lab is public infrastructure with privacy/data-publication requirements, so consent is required before testing. The user's own mobile or Wi-Fi data can still be consumed.
 
 ## Build and verify
 
@@ -32,6 +41,5 @@ The user's own mobile/Wi-Fi data can still be consumed by a speed test.
 APK output:
 
 ```text
-artifacts\SpeedTest-v0.1.0-build-1-arm64-v8a-debug.apk
+artifacts\runForest-v0.2.0-build-2-arm64-v8a-debug.apk
 ```
-

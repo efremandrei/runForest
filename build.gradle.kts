@@ -5,8 +5,8 @@ plugins {
     id("com.google.devtools.ksp") version "2.2.0-2.0.2" apply false
 }
 
-val speedTestVersionCode = providers.gradleProperty("speedTestVersionCode").get()
-val speedTestVersionName = providers.gradleProperty("speedTestVersionName").get()
+val runForestVersionCode = providers.gradleProperty("runForestVersionCode").get()
+val runForestVersionName = providers.gradleProperty("runForestVersionName").get()
 
 tasks.register<Copy>("packageDebugApks") {
     dependsOn(":app:assembleDebug")
@@ -14,13 +14,12 @@ tasks.register<Copy>("packageDebugApks") {
         delete(fileTree("artifacts") { include("*.apk") })
     }
     from("app/build/outputs/apk/debug")
-    include("SpeedTest-v${speedTestVersionName}-build-${speedTestVersionCode}-arm64-v8a-debug.apk")
+    include("runForest-v${runForestVersionName}-build-${runForestVersionCode}-arm64-v8a-debug.apk")
     into("artifacts")
 }
 
-tasks.register("printSpeedTestVersion") {
+tasks.register("printRunForestVersion") {
     doLast {
-        println("Speed Test v$speedTestVersionName build $speedTestVersionCode")
+        println("runForest v$runForestVersionName build $runForestVersionCode")
     }
 }
-

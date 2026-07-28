@@ -14,6 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SpeedTest"
+rootProject.name = "runForest"
 include(":app")
-
