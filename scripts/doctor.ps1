@@ -1,5 +1,5 @@
 param(
-    [string]$ApkPath = ".\artifacts\SpeedTest-v0.1.0-build-1-arm64-v8a-debug.apk"
+    [string]$ApkPath = ".\artifacts\runForest-v0.2.0-build-2-arm64-v8a-debug.apk"
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,4 +43,3 @@ if (Test-Path $adb) {
 } else {
     Write-Check "adb" "not installed"
 }
-
