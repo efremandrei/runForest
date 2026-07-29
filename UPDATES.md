@@ -1,5 +1,15 @@
 # Updates
 
+## 0.3.0 build 3
+
+- Added an ordered fallback ladder for DNS, HTTPS Locate, candidate servers, address families, and NDT7 server selection.
+- Active-network DNS falls back to the system resolver; TCP checks try every returned IPv6/IPv4 address.
+- M-Lab discovery retries three times and evaluates up to three returned candidates before failing.
+- A failed NDT7 candidate automatically advances to the next candidate, while every attempt remains visible in the live log.
+- Cross-compares Android validation with active reachability, client connection time with server TCPInfo RTT, and client/server throughput accounting.
+- Added High/Medium/Low evidence confidence and disagreement/fallback counts to the UI, technical details, logs, and JSON history.
+- No additional runtime service was introduced; M-Lab remains the only external measurement infrastructure.
+
 ## 0.2.0 build 2
 
 - Renamed the product to `runForest`; package ID remains `com.andre.speedtest` for update and local-data continuity.

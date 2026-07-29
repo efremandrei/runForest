@@ -253,6 +253,8 @@ class SpeedTestViewModel(app: Application) : AndroidViewModel(app) {
             put("probeAttempts", event.probeAttempts)
             put("score", event.evaluation.score)
             put("summary", event.evaluation.summary)
+            put("evidenceConfidence", event.evaluation.confidence)
+            put("evidenceSummary", event.evaluation.evidenceSummary)
             put("findings", JSONArray().apply {
                 event.evaluation.findings.forEach { finding ->
                     put(JSONObject().apply {
@@ -392,6 +394,7 @@ private fun EvaluationCard(state: SpeedUiState, actions: SpeedTestViewModel) {
                     Column {
                         Text("Connection evaluation", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(evaluation.verdict, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("${evaluation.confidence} evidence confidence", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text("${evaluation.score}/100", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
@@ -518,6 +521,10 @@ private fun DiagnosticsDialog(state: SpeedUiState, actions: SpeedTestViewModel) 
                 item { Text("Server: ${diag?.serverMachine ?: state.server}") }
                 item { Text("Bytes: down=${diag?.downloadBytes ?: 0} up=${diag?.uploadBytes ?: 0}") }
                 item { Text("Elapsed: ${diag?.elapsedMillis ?: 0} ms") }
+                state.evaluation?.let { evaluation ->
+                    item { Text("Evidence confidence: ${evaluation.confidence}") }
+                    item { Text("Cross-checks: ${evaluation.evidenceSummary}") }
+                }
                 if (!diag?.rawDetails.isNullOrBlank()) item { Text("Raw: ${diag?.rawDetails}", fontFamily = FontFamily.Monospace) }
             }
         },

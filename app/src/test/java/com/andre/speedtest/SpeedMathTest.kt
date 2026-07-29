@@ -57,6 +57,59 @@ class SpeedMathTest {
         assertEquals("Poor", result.verdict)
     }
 
+    @Test
+    fun crossChecksCanConfirmInternetWhenAndroidValidationIsInconclusive() {
+        val report = InvestigationReport(
+            confidence = "Medium",
+            summary = "Active HTTPS succeeded after Android validation was inconclusive.",
+            fallbackCount = 0,
+            contradictionCount = 1,
+            evidence = listOf(
+                InvestigationEvidence(
+                    method = "HTTPS reachability",
+                    status = EvidenceStatus.PASS,
+                    value = "HTTP 200",
+                    detail = "M-Lab Locate succeeded."
+                )
+            )
+        )
+
+        val result = ConnectionEvaluator.evaluate(
+            network = network(validated = false),
+            downloadMbps = 100.0,
+            uploadMbps = 30.0,
+            idleLatencyMillis = 20,
+            loadedLatencyMillis = 25,
+            jitterMillis = 2,
+            probeFailures = 0,
+            probeAttempts = 10,
+            investigation = report
+        )
+
+        assertTrue(result.findings.any { it.title == "Android validation disagrees with active checks" })
+        assertTrue(result.findings.none { it.title == "Internet access is not validated" })
+        assertEquals("Medium", result.confidence)
+    }
+
+    @Test
+    fun failedInvestigationDoesNotInventZeroSpeedFindings() {
+        val result = ConnectionEvaluator.evaluate(
+            network = network(),
+            downloadMbps = 0.0,
+            uploadMbps = 0.0,
+            idleLatencyMillis = 0,
+            loadedLatencyMillis = 0,
+            jitterMillis = 0,
+            probeFailures = 0,
+            probeAttempts = 0,
+            investigation = InvestigationReport("Low", "All active methods failed.", 0, 0, emptyList()),
+            measurementsAvailable = false
+        )
+
+        assertTrue(result.findings.none { it.title.contains("capacity", ignoreCase = true) })
+        assertTrue(result.findings.any { it.title == "Evidence confidence: Low" })
+    }
+
     private fun network(validated: Boolean = true) = NetworkSnapshot(
         type = "Wi-Fi",
         metered = false,

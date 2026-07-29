@@ -40,8 +40,31 @@ data class PhaseMeasurement(
     val sampleCount: Int,
     val serverRttMillis: Long? = null,
     val serverRttVariationMillis: Long? = null,
-    val totalRetransmissions: Long? = null
+    val totalRetransmissions: Long? = null,
+    val clientMegabitsPerSecond: Double? = null,
+    val serverMegabitsPerSecond: Double? = null
 )
+
+enum class EvidenceStatus { PASS, WARN, FAIL }
+
+data class InvestigationEvidence(
+    val method: String,
+    val status: EvidenceStatus,
+    val value: String,
+    val detail: String,
+    val fallbackUsed: Boolean = false
+)
+
+data class InvestigationReport(
+    val confidence: String,
+    val summary: String,
+    val fallbackCount: Int,
+    val contradictionCount: Int,
+    val evidence: List<InvestigationEvidence>
+) {
+    fun hasPassed(method: String): Boolean =
+        evidence.any { it.method == method && it.status == EvidenceStatus.PASS }
+}
 
 data class NetworkSnapshot(
     val type: String,
