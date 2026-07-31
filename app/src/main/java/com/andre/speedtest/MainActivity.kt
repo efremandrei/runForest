@@ -6,21 +6,17 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,20 +24,20 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
@@ -79,13 +75,16 @@ data class SpeedUiState(
     val darkTheme: Boolean = true,
     val consentAccepted: Boolean = false,
     val running: Boolean = false,
+    val mode: EvaluationMode = EvaluationMode.INDEPENDENT,
     val stage: String = "Ready to evaluate",
     val downloadMbps: Double = 0.0,
     val uploadMbps: Double = 0.0,
     val latencyMillis: Long = 0,
     val loadedLatencyMillis: Long = 0,
     val jitterMillis: Long = 0,
-    val server: String = "Not selected",
+    val throughputMeasured: Boolean = false,
+    val latencyMeasured: Boolean = false,
+    val server: String = "Multiple independent targets",
     val network: NetworkSnapshot? = null,
     val history: List<SpeedResultEntity> = emptyList(),
     val evaluation: ConnectionEvaluation? = null,
@@ -101,10 +100,10 @@ data class SpeedUiState(
 class SpeedTestViewModel(app: Application) : AndroidViewModel(app) {
     private val db = SpeedDatabase.get(app)
     private val settings = SettingsStore(app)
-    private val engine = MLabNdt7Engine(app)
     private val _uiState = MutableStateFlow(SpeedUiState(network = NetworkInspector.snapshot(app)))
     val uiState: StateFlow<SpeedUiState> = _uiState.asStateFlow()
     private var testJob: Job? = null
+    private var activeEngine: SpeedTestEngine? = null
 
     init {
         appendLog(LogLevel.INFO, "app", "runForest ${BuildConfig.VERSION_NAME} build ${BuildConfig.VERSION_CODE} started.")
@@ -123,12 +122,32 @@ class SpeedTestViewModel(app: Application) : AndroidViewModel(app) {
     fun requestAbout(show: Boolean) = _uiState.update { it.copy(showAbout = show) }
     fun requestDiagnostics(show: Boolean) = _uiState.update { it.copy(showDiagnostics = show) }
     fun requestLiveLogs(show: Boolean) = _uiState.update { it.copy(showLiveLogs = show) }
+    fun setMode(mode: EvaluationMode) {
+        if (_uiState.value.running) return
+        _uiState.update {
+            it.copy(
+                mode = mode,
+                stage = if (mode == EvaluationMode.INDEPENDENT) {
+                    "Ready for independent diagnosis"
+                } else {
+                    "Ready for full M-Lab speed test"
+                },
+                server = if (mode == EvaluationMode.INDEPENDENT) {
+                    "Multiple independent targets"
+                } else {
+                    "Not selected"
+                },
+                throughputMeasured = false,
+                latencyMeasured = false
+            )
+        }
+    }
 
     fun acceptConsent() {
         viewModelScope.launch {
             settings.setConsentAccepted(true)
             _uiState.update { it.copy(showConsent = false) }
-            startTest()
+            launchSelectedTest()
         }
     }
 
@@ -136,27 +155,49 @@ class SpeedTestViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startTest() {
         if (_uiState.value.running) return
-        if (!_uiState.value.consentAccepted) {
+        if (_uiState.value.mode == EvaluationMode.FULL_SPEED && !_uiState.value.consentAccepted) {
             _uiState.update { it.copy(showConsent = true) }
             return
         }
+        launchSelectedTest()
+    }
+
+    private fun launchSelectedTest() {
+        if (_uiState.value.running) return
+        val mode = _uiState.value.mode
         val network = NetworkInspector.snapshot(getApplication())
+        val engine = when (mode) {
+            EvaluationMode.INDEPENDENT -> IndependentDiagnosticEngine(getApplication())
+            EvaluationMode.FULL_SPEED -> MLabNdt7Engine(getApplication())
+        }
+        activeEngine = engine
         _uiState.update {
             it.copy(
                 running = true,
-                stage = "Starting evaluation",
+                stage = if (mode == EvaluationMode.INDEPENDENT) {
+                    "Starting independent diagnosis"
+                } else {
+                    "Starting full speed test"
+                },
                 downloadMbps = 0.0,
                 uploadMbps = 0.0,
                 latencyMillis = 0,
                 loadedLatencyMillis = 0,
                 jitterMillis = 0,
+                throughputMeasured = false,
+                latencyMeasured = false,
+                server = if (mode == EvaluationMode.INDEPENDENT) {
+                    "Cloudflare, Google, IETF"
+                } else {
+                    "Not selected"
+                },
                 network = network,
                 evaluation = null,
                 diagnostic = null,
                 exportMessage = ""
             )
         }
-        appendLog(LogLevel.INFO, "test", "New connection evaluation started.")
+        appendLog(LogLevel.INFO, "test", "${mode.label} started.")
         testJob = viewModelScope.launch {
             engine.startTest().collect { event ->
                 when (event) {
@@ -173,13 +214,16 @@ class SpeedTestViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     is SpeedTestEvent.Log -> appendLog(event.entry)
                     is SpeedTestEvent.Completed -> saveCompleted(event)
+                    is SpeedTestEvent.DiagnosticCompleted -> saveDiagnostic(event)
                     is SpeedTestEvent.Failed -> {
                         _uiState.update {
                             it.copy(
                                 running = false,
                                 stage = "Evaluation failed",
                                 evaluation = event.evaluation,
-                                diagnostic = event.diagnostic
+                                diagnostic = event.diagnostic,
+                                throughputMeasured = false,
+                                latencyMeasured = false
                             )
                         }
                         appendLog(LogLevel.ERROR, "test", event.diagnostic.message)
@@ -191,7 +235,7 @@ class SpeedTestViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancelTest() {
-        engine.cancel()
+        activeEngine?.cancel()
         testJob?.cancel()
         appendLog(LogLevel.WARN, "test", "Evaluation cancelled by user.")
         _uiState.update { it.copy(running = false, stage = "Cancelled") }
@@ -296,12 +340,38 @@ class SpeedTestViewModel(app: Application) : AndroidViewModel(app) {
                 latencyMillis = event.latencyMillis,
                 loadedLatencyMillis = event.loadedLatencyMillis,
                 jitterMillis = event.jitterMillis,
+                throughputMeasured = true,
+                latencyMeasured = true,
                 server = "${event.server.city}, ${event.server.country} (${event.server.machine})",
                 network = network,
                 evaluation = event.evaluation,
                 diagnostic = event.diagnostic
             )
         }
+    }
+
+    private fun saveDiagnostic(event: SpeedTestEvent.DiagnosticCompleted) {
+        val network = NetworkInspector.snapshot(getApplication())
+        _uiState.update {
+            it.copy(
+                running = false,
+                stage = "Independent diagnosis complete",
+                latencyMillis = event.latencyMillis,
+                loadedLatencyMillis = 0,
+                jitterMillis = event.jitterMillis,
+                throughputMeasured = false,
+                latencyMeasured = event.latencyMillis > 0,
+                server = "Cloudflare, Google, IETF",
+                network = network,
+                evaluation = event.evaluation,
+                diagnostic = event.diagnostic
+            )
+        }
+        appendLog(
+            LogLevel.INFO,
+            "evaluation",
+            "Independent diagnosis: ${event.evaluation.score}/100, ${event.evaluation.confidence} confidence."
+        )
     }
 
     private fun appendLog(entry: LiveLogEntry) {
@@ -391,6 +461,18 @@ private fun Header(state: SpeedUiState, actions: SpeedTestViewModel) {
 private fun EvaluationCard(state: SpeedUiState, actions: SpeedTestViewModel) {
     Card(shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                EvaluationMode.entries.forEachIndexed { index, mode ->
+                    SegmentedButton(
+                        selected = state.mode == mode,
+                        onClick = { actions.setMode(mode) },
+                        enabled = !state.running,
+                        shape = SegmentedButtonDefaults.itemShape(index, EvaluationMode.entries.size)
+                    ) {
+                        Text(if (mode == EvaluationMode.INDEPENDENT) "Independent" else "Full speed")
+                    }
+                }
+            }
             state.evaluation?.let { evaluation ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     Column {
@@ -404,18 +486,23 @@ private fun EvaluationCard(state: SpeedUiState, actions: SpeedTestViewModel) {
                 HorizontalDivider()
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("Download", "${SpeedMath.formatMbps(state.downloadMbps)} Mbps")
-                Metric("Upload", "${SpeedMath.formatMbps(state.uploadMbps)} Mbps")
+                Metric("Download", if (state.throughputMeasured) "${SpeedMath.formatMbps(state.downloadMbps)} Mbps" else "Not measured")
+                Metric("Upload", if (state.throughputMeasured) "${SpeedMath.formatMbps(state.uploadMbps)} Mbps" else "Not measured")
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("Idle", "${state.latencyMillis} ms")
-                Metric("Under load", "${state.loadedLatencyMillis} ms")
-                Metric("Jitter", "${state.jitterMillis} ms")
+                Metric("Idle", if (state.latencyMeasured) "${state.latencyMillis} ms" else "Not measured")
+                Metric("Under load", if (state.throughputMeasured) "${state.loadedLatencyMillis} ms" else "Not measured")
+                Metric("Jitter", if (state.latencyMeasured) "${state.jitterMillis} ms" else "Not measured")
             }
-            Text("Server: ${state.server}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (state.mode == EvaluationMode.INDEPENDENT) "Targets: ${state.server}" else "Server: ${state.server}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Text(networkLine(state.network), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = actions::startTest, enabled = !state.running) { Text("Evaluate connection") }
+                Button(onClick = actions::startTest, enabled = !state.running) {
+                    Text(if (state.mode == EvaluationMode.INDEPENDENT) "Diagnose connection" else "Run full speed test")
+                }
                 OutlinedButton(onClick = actions::cancelTest, enabled = state.running) { Text("Cancel") }
                 if (state.running) CircularProgressIndicator(modifier = Modifier.width(26.dp).height(26.dp), strokeWidth = 3.dp)
             }
@@ -479,110 +566,6 @@ private fun HistoryCard(result: SpeedResultEntity, actions: SpeedTestViewModel) 
     }
 }
 
-@Composable
-private fun ConsentDialog(actions: SpeedTestViewModel) {
-    AlertDialog(
-        onDismissRequest = actions::dismissConsent,
-        title = { Text("M-Lab data consent") },
-        text = { Text("runForest uses M-Lab NDT7 for real throughput measurements. M-Lab test data can include your public IP address, test time, and measurement details. The app also makes short connection probes to the selected M-Lab server. No paid services, app-owned cloud sync, GPS, Firebase, advertising, or paid analytics are used. Tests consume network data.") },
-        confirmButton = { Button(onClick = actions::acceptConsent) { Text("I agree") } },
-        dismissButton = { TextButton(onClick = actions::dismissConsent) { Text("Cancel") } }
-    )
-}
-
-@Composable
-private fun AboutDialog(actions: SpeedTestViewModel) {
-    val uriHandler = LocalUriHandler.current
-    AlertDialog(
-        onDismissRequest = { actions.requestAbout(false) },
-        title = { Text("About runForest") },
-        text = {
-            Column {
-                Text("Developer: Andrei Efremushkin")
-                Text(
-                    "Email: andrei.efr@gmail.com",
-                    modifier = Modifier.clickable {
-                        uriHandler.openUri("mailto:andrei.efr@gmail.com")
-                    }
-                )
-                Text(
-                    "GitHub: https://github.com/efremandrei/runForest",
-                    modifier = Modifier.clickable {
-                        uriHandler.openUri("https://github.com/efremandrei/runForest")
-                    }
-                )
-                Text("Version: ${BuildConfig.VERSION_NAME}/${BuildConfig.VERSION_CODE}")
-            }
-        },
-        confirmButton = { Button(onClick = { actions.requestAbout(false) }) { Text("Close") } }
-    )
-}
-
-@Composable
-private fun DiagnosticsDialog(state: SpeedUiState, actions: SpeedTestViewModel) {
-    val network = state.network
-    val diag = state.diagnostic
-    AlertDialog(
-        onDismissRequest = { actions.requestDiagnostics(false) },
-        title = { Text("Technical details") },
-        text = {
-            LazyColumn(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                item { Text("Device: ${network?.device ?: "Unknown"}") }
-                item { Text("Android: ${network?.android ?: "Unknown"}") }
-                item { Text("ABI: ${network?.abi ?: "Unknown"}") }
-                item { Text("Network: ${networkLine(network)}") }
-                item { Text("Interface: ${network?.interfaceName?.ifBlank { "Unknown" } ?: "Unknown"}") }
-                item { Text("DNS: ${network?.dnsServers?.joinToString()?.ifBlank { "Unknown" } ?: "Unknown"}") }
-                item { Text("Private DNS: ${network?.privateDnsActive ?: false}") }
-                item { Text("Estimated link: ${network?.estimatedDownstreamMbps ?: 0}/${network?.estimatedUpstreamMbps ?: 0} Mbps") }
-                item { Text("Wi-Fi: RSSI ${network?.wifiSignalDbm ?: "Unknown"} dBm, RX/TX ${network?.wifiRxLinkMbps ?: "?"}/${network?.wifiTxLinkMbps ?: "?"} Mbps, ${network?.wifiFrequencyMhz ?: "?"} MHz") }
-                item { Text("Stage: ${diag?.stage ?: state.stage}") }
-                item { Text("Message: ${diag?.message ?: "No completed diagnostic event yet."}") }
-                item { Text("Server: ${diag?.serverMachine ?: state.server}") }
-                item { Text("Bytes: down=${diag?.downloadBytes ?: 0} up=${diag?.uploadBytes ?: 0}") }
-                item { Text("Elapsed: ${diag?.elapsedMillis ?: 0} ms") }
-                state.evaluation?.let { evaluation ->
-                    item { Text("Evidence confidence: ${evaluation.confidence}") }
-                    item { Text("Cross-checks: ${evaluation.evidenceSummary}") }
-                }
-                if (!diag?.rawDetails.isNullOrBlank()) item { Text("Raw: ${diag?.rawDetails}", fontFamily = FontFamily.Monospace) }
-            }
-        },
-        confirmButton = { Button(onClick = { actions.requestDiagnostics(false) }) { Text("Close") } }
-    )
-}
-
-@Composable
-private fun LiveLogsDialog(state: SpeedUiState, actions: SpeedTestViewModel) {
-    val listState = rememberLazyListState()
-    LaunchedEffect(state.logs.size) {
-        if (state.logs.isNotEmpty()) listState.scrollToItem(state.logs.lastIndex)
-    }
-    AlertDialog(
-        onDismissRequest = { actions.requestLiveLogs(false) },
-        title = { Text("Live diagnostic log") },
-        text = {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp, max = 520.dp),
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(state.logs) { entry ->
-                    Text(entry.formatted(), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = entry.logColor())
-                }
-                if (state.logs.isEmpty()) item { Text("The live log is empty.") }
-            }
-        },
-        confirmButton = { Button(onClick = { actions.requestLiveLogs(false) }) { Text("Close") } },
-        dismissButton = {
-            Row {
-                TextButton(onClick = actions::exportLogs, enabled = state.logs.isNotEmpty()) { Text("Export") }
-                TextButton(onClick = actions::clearLogs, enabled = state.logs.isNotEmpty()) { Text("Clear") }
-            }
-        }
-    )
-}
-
 private fun networkLine(network: NetworkSnapshot?): String = network?.let {
     buildString {
         append(it.type)
@@ -594,18 +577,6 @@ private fun networkLine(network: NetworkSnapshot?): String = network?.let {
         it.wifiSignalDbm?.let { rssi -> append(" | $rssi dBm") }
     }
 } ?: "Unknown network"
-
-private fun LiveLogEntry.formatted(): String {
-    val time = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(timestampMillis))
-    return "$time ${level.name.padEnd(5)} [$source] $message"
-}
-
-@Composable
-private fun LiveLogEntry.logColor(): Color = when (level) {
-    LogLevel.ERROR -> MaterialTheme.colorScheme.error
-    LogLevel.WARN -> MaterialTheme.colorScheme.tertiary
-    LogLevel.INFO -> MaterialTheme.colorScheme.onSurface
-}
 
 @Composable
 private fun EvaluationFinding.containerColor(): Color = when (severity) {

@@ -126,6 +126,14 @@ sealed interface SpeedTestEvent {
         val evaluation: ConnectionEvaluation,
         val diagnostic: TestDiagnostic
     ) : SpeedTestEvent
+    data class DiagnosticCompleted(
+        val latencyMillis: Long,
+        val jitterMillis: Long,
+        val probeFailures: Int,
+        val probeAttempts: Int,
+        val evaluation: ConnectionEvaluation,
+        val diagnostic: TestDiagnostic
+    ) : SpeedTestEvent
     data class Failed(
         val diagnostic: TestDiagnostic,
         val evaluation: ConnectionEvaluation? = null
@@ -136,6 +144,11 @@ sealed interface SpeedTestEvent {
 interface SpeedTestEngine {
     fun startTest(): Flow<SpeedTestEvent>
     fun cancel()
+}
+
+enum class EvaluationMode(val label: String) {
+    INDEPENDENT("Independent diagnosis"),
+    FULL_SPEED("Full speed test")
 }
 
 @Entity(tableName = "speed_results")

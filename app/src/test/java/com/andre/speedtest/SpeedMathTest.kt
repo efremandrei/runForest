@@ -103,7 +103,7 @@ class SpeedMathTest {
             probeFailures = 0,
             probeAttempts = 0,
             investigation = InvestigationReport("Low", "All active methods failed.", 0, 0, emptyList()),
-            measurementsAvailable = false
+            measurementCoverage = MeasurementCoverage.AVAILABILITY_ONLY
         )
 
         assertTrue(result.findings.none { it.title.contains("capacity", ignoreCase = true) })

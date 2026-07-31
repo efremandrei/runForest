@@ -246,7 +246,7 @@ class MLabNdt7Engine(
                 probeFailures = 0,
                 probeAttempts = 0,
                 investigation = investigation,
-                measurementsAvailable = false
+                measurementCoverage = MeasurementCoverage.AVAILABILITY_ONLY
             )
             send(
                 SpeedTestEvent.Failed(

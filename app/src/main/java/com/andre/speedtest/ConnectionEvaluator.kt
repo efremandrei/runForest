@@ -18,6 +18,12 @@ data class ConnectionEvaluation(
     val evidenceSummary: String = "Single-run evidence"
 )
 
+enum class MeasurementCoverage {
+    FULL,
+    LATENCY_ONLY,
+    AVAILABILITY_ONLY
+}
+
 object ConnectionEvaluator {
     fun evaluate(
         network: NetworkSnapshot,
@@ -30,7 +36,7 @@ object ConnectionEvaluator {
         probeAttempts: Int,
         retransmissions: Long = 0,
         investigation: InvestigationReport? = null,
-        measurementsAvailable: Boolean = true
+        measurementCoverage: MeasurementCoverage = MeasurementCoverage.FULL
     ): ConnectionEvaluation {
         val findings = mutableListOf<EvaluationFinding>()
         var score = 100
@@ -46,8 +52,10 @@ object ConnectionEvaluator {
             findings += EvaluationFinding(severity, title, evidence, action)
         }
 
-        val activeInternetConfirmed = investigation?.hasPassed("HTTPS reachability") == true ||
-            investigation?.hasPassed("NDT7 download") == true
+        val activeInternetConfirmed = investigation?.evidence?.any {
+            it.status == EvidenceStatus.PASS &&
+                (it.method.startsWith("HTTPS ") || it.method == "NDT7 download")
+        } == true
 
         if (network.captivePortal) {
             add(FindingSeverity.CRITICAL, 80, "Sign-in portal detected", "Android marked this network as captive.", "Open the Wi-Fi sign-in page, complete it, then evaluate again.")
@@ -63,6 +71,14 @@ object ConnectionEvaluator {
             } else {
                 add(FindingSeverity.CRITICAL, 60, "Internet access is not validated", "Android could not confirm public internet access and active checks did not confirm it.", "Check airplane mode, mobile data, Wi-Fi login, DNS, and router uplink.")
             }
+        } else if (investigation != null && !activeInternetConfirmed) {
+            add(
+                FindingSeverity.WARNING,
+                18,
+                "Active checks could not confirm internet access",
+                "Android marked the network validated, but the app's HTTPS checks did not complete.",
+                "Check Private DNS, VPN, firewall filtering, and the live log; then repeat the independent diagnosis."
+            )
         }
 
         network.wifiSignalDbm?.let { rssi ->
@@ -72,20 +88,20 @@ object ConnectionEvaluator {
             }
         }
 
-        if (measurementsAvailable) when {
+        if (measurementCoverage != MeasurementCoverage.AVAILABILITY_ONLY) when {
             idleLatencyMillis > 200 -> add(FindingSeverity.WARNING, 25, "Very high idle latency", "Median server connection time is $idleLatencyMillis ms.", "Retest without VPN and compare Wi-Fi with mobile data; a distant route or busy link may be involved.")
             idleLatencyMillis > 100 -> add(FindingSeverity.WARNING, 15, "High idle latency", "Median server connection time is $idleLatencyMillis ms.", "Compare another network and a test near the router.")
             idleLatencyMillis > 60 -> add(FindingSeverity.INFO, 7, "Elevated idle latency", "Median server connection time is $idleLatencyMillis ms.", "Latency-sensitive calls and games may benefit from a closer or less congested path.")
         }
 
-        if (measurementsAvailable) when {
+        if (measurementCoverage != MeasurementCoverage.AVAILABILITY_ONLY) when {
             jitterMillis > 50 -> add(FindingSeverity.WARNING, 20, "Unstable latency", "Connection-time jitter is $jitterMillis ms.", "Pause other traffic and retest; on Wi-Fi, compare close to the router.")
             jitterMillis > 25 -> add(FindingSeverity.WARNING, 12, "Variable latency", "Connection-time jitter is $jitterMillis ms.", "Check for Wi-Fi interference or competing traffic.")
             jitterMillis > 10 -> add(FindingSeverity.INFO, 5, "Some latency variation", "Connection-time jitter is $jitterMillis ms.", "Repeat the evaluation at another time to see whether it persists.")
         }
 
         val loadIncrease = (loadedLatencyMillis - idleLatencyMillis).coerceAtLeast(0)
-        if (measurementsAvailable) when {
+        if (measurementCoverage == MeasurementCoverage.FULL) when {
             loadIncrease > 200 -> add(FindingSeverity.WARNING, 25, "Severe queueing under load", "Loaded connection time rose by $loadIncrease ms.", "Enable SQM/QoS on the router or cap heavy transfers slightly below line rate.")
             loadIncrease > 100 -> add(FindingSeverity.WARNING, 18, "Queueing under load", "Loaded connection time rose by $loadIncrease ms.", "Check router SQM/QoS and retest with other downloads paused.")
             loadIncrease > 50 -> add(FindingSeverity.INFO, 10, "Noticeable latency under load", "Loaded connection time rose by $loadIncrease ms.", "Interactive apps may improve with router queue management.")
@@ -93,22 +109,31 @@ object ConnectionEvaluator {
 
         if (probeAttempts > 0 && probeFailures > 0) {
             val percent = probeFailures * 100 / probeAttempts
-            add(
-                if (percent >= 25) FindingSeverity.WARNING else FindingSeverity.INFO,
-                if (percent >= 25) 25 else 10,
-                "Connection probes failed",
-                "$probeFailures of $probeAttempts TCP connection probes failed ($percent%).",
-                "Repeat the test; persistent failures suggest an unstable path, filtering, or severe congestion."
-            )
+            if (investigation?.confidence == "High") {
+                findings += EvaluationFinding(
+                    FindingSeverity.INFO,
+                    "Some endpoints were unavailable",
+                    "$probeFailures of $probeAttempts active checks failed, but the independent quorum remained strong.",
+                    "Inspect the live log to identify the affected operator; repeat later if the same endpoint keeps failing."
+                )
+            } else {
+                add(
+                    if (percent >= 50) FindingSeverity.WARNING else FindingSeverity.INFO,
+                    if (percent >= 50) 20 else 8,
+                    "Active checks failed",
+                    "$probeFailures of $probeAttempts active connection checks failed ($percent%).",
+                    "Repeat the diagnosis; persistent failures can indicate DNS, filtering, routing, or an endpoint-specific outage."
+                )
+            }
         }
 
-        if (measurementsAvailable) when {
+        if (measurementCoverage == MeasurementCoverage.FULL) when {
             downloadMbps < 5 -> add(FindingSeverity.WARNING, 25, "Low download capacity", "Measured download is ${SpeedMath.formatMbps(downloadMbps)} Mbps.", "Compare beside the router and on another device before contacting the provider.")
             downloadMbps < 25 -> add(FindingSeverity.WARNING, 12, "Limited download capacity", "Measured download is ${SpeedMath.formatMbps(downloadMbps)} Mbps.", "Check competing traffic and compare Ethernet or a near-router Wi-Fi test.")
             downloadMbps < 50 -> add(FindingSeverity.INFO, 5, "Moderate download capacity", "Measured download is ${SpeedMath.formatMbps(downloadMbps)} Mbps.", "This may be adequate, but compare it with your plan and workload.")
         }
 
-        if (measurementsAvailable) when {
+        if (measurementCoverage == MeasurementCoverage.FULL) when {
             uploadMbps < 1.5 -> add(FindingSeverity.WARNING, 20, "Low upload capacity", "Measured upload is ${SpeedMath.formatMbps(uploadMbps)} Mbps.", "Video calls and backups may struggle; pause uploads and retest.")
             uploadMbps < 5 -> add(FindingSeverity.WARNING, 10, "Limited upload capacity", "Measured upload is ${SpeedMath.formatMbps(uploadMbps)} Mbps.", "Check cloud backup and other upstream traffic.")
         }

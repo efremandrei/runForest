@@ -1,5 +1,17 @@
 # Updates
 
+## 0.4.0 build 4
+
+- Added a default diagnosis mode that works independently of M-Lab.
+- Cross-checks three separately operated targets: Cloudflare, Google, and IETF.
+- Runs DNS, TCP/443, and HTTPS for every target, continuing after individual failures.
+- Uses a two-of-three HTTPS quorum and compares it with Android network validation.
+- Reports independent latency and jitter without presenting unmeasured throughput as 0 Mbps.
+- Keeps the full M-Lab NDT7 test as an optional, consent-gated mode.
+- Added deterministic tests for provider outage, thrown probe exceptions, full fall-through, and contradictory evidence.
+- Added `scripts/independent-network-check.ps1` to verify all live targets outside the Android implementation.
+- Uses only public, no-key endpoints and no paid runtime services.
+
 ## 0.3.0 build 3
 
 - Added an ordered fallback ladder for DNS, HTTPS Locate, candidate servers, address families, and NDT7 server selection.
