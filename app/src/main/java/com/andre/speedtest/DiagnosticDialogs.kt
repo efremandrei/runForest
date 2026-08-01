@@ -1,5 +1,6 @@
 package com.andre.speedtest
 
+import android.app.Activity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,8 @@ internal fun ConsentDialog(actions: SpeedTestViewModel) {
 
 @Composable
 internal fun AboutDialog(actions: SpeedTestViewModel) {
+    val context = LocalContext.current
+    val activity = context as? Activity
     val uriHandler = LocalUriHandler.current
     AlertDialog(
         onDismissRequest = { actions.requestAbout(false) },
@@ -73,7 +77,12 @@ internal fun AboutDialog(actions: SpeedTestViewModel) {
                 )
             }
         },
-        confirmButton = { Button(onClick = { actions.requestAbout(false) }) { Text("Close") } }
+        confirmButton = { Button(onClick = { actions.requestAbout(false) }) { Text("Close") } },
+        dismissButton = {
+            TextButton(onClick = { activity?.let(AppUpdateChecker::checkNow) }) {
+                Text("Check for updates")
+            }
+        }
     )
 }
 

@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppUpdateChecker.checkDaily(this)
         setContent {
             val state by model.uiState.collectAsState()
             RunForestTheme(dark = state.darkTheme) {
