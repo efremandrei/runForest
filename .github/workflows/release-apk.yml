@@ -1,0 +1,105 @@
+name: Build downloadable APK release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk-release:
+    name: Build APK and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew --no-daemon assembleDebug
+          else
+            gradle --no-daemon assembleDebug
+          fi
+
+      - name: Read app version
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import os
+          import re
+          from pathlib import Path
+
+          version_name = ""
+          for gradle_file in (Path("app/build.gradle"), Path("app/build.gradle.kts")):
+              if not gradle_file.exists():
+                  continue
+
+              match = re.search(
+                  r'^\s*versionName\s*(?:=|\s)\s*["\']?([^"\'\s]+)',
+                  gradle_file.read_text(encoding="utf-8", errors="ignore"),
+                  re.MULTILINE,
+              )
+              if match:
+                  version_name = match.group(1)
+                  break
+
+          if not version_name:
+              version_name = f"0.0.{os.environ['GITHUB_RUN_NUMBER']}"
+
+          safe_version = re.sub(r"[^A-Za-z0-9._-]+", "-", version_name).strip("-")
+          print(f"APP_VERSION={safe_version or '0.0.' + os.environ['GITHUB_RUN_NUMBER']}")
+          PY
+
+      - name: Prepare versioned downloadable APK
+        shell: bash
+        run: |
+          mkdir -p release
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          apk_path="$(find . -path '*/build/outputs/apk/debug/*.apk' -type f | head -n 1)"
+
+          if [ -z "$apk_path" ]; then
+            echo "No debug APK was produced."
+            find . -path '*/build/outputs/*' -type f || true
+            exit 1
+          fi
+
+          versioned_apk="release/${repo_name}-v${APP_VERSION}-debug.apk"
+          cp "$apk_path" "$versioned_apk"
+
+          echo "APK_PATH=$versioned_apk" >> "$GITHUB_ENV"
+
+      - name: Publish downloadable GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: debug-v${{ env.APP_VERSION }}
+          name: Debug APK v${{ env.APP_VERSION }}
+          body: |
+            Automatically built debug APK from the latest default-branch commit.
+
+            APK file name includes the app version number.
+          artifacts: ${{ env.APK_PATH }}
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
