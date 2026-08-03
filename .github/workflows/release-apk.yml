@@ -38,9 +38,9 @@ jobs:
         run: |
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
-            ./gradlew --no-daemon assembleDebug
+            ./gradlew --no-daemon packageDebugApks
           else
-            gradle --no-daemon assembleDebug
+            gradle --no-daemon packageDebugApks
           fi
 
       - name: Read app version
@@ -52,53 +52,49 @@ jobs:
           from pathlib import Path
 
           version_name = ""
-          for gradle_file in (Path("app/build.gradle"), Path("app/build.gradle.kts")):
-              if not gradle_file.exists():
-                  continue
-
-              match = re.search(
-                  r'^\s*versionName\s*(?:=|\s)\s*["\']?([^"\'\s]+)',
-                  gradle_file.read_text(encoding="utf-8", errors="ignore"),
-                  re.MULTILINE,
-              )
-              if match:
-                  version_name = match.group(1)
-                  break
+          version_code = ""
+          props = Path("gradle.properties")
+          if props.exists():
+              for line in props.read_text(encoding="utf-8", errors="ignore").splitlines():
+                  if line.startswith("runForestVersionName="):
+                      version_name = line.split("=", 1)[1].strip()
+                  if line.startswith("runForestVersionCode="):
+                      version_code = line.split("=", 1)[1].strip()
 
           if not version_name:
               version_name = f"0.0.{os.environ['GITHUB_RUN_NUMBER']}"
+          if not version_code:
+              version_code = os.environ["GITHUB_RUN_NUMBER"]
 
           safe_version = re.sub(r"[^A-Za-z0-9._-]+", "-", version_name).strip("-")
           print(f"APP_VERSION={safe_version or '0.0.' + os.environ['GITHUB_RUN_NUMBER']}")
+          print(f"APP_BUILD={version_code}")
           PY
 
       - name: Prepare versioned downloadable APK
         shell: bash
         run: |
-          mkdir -p release
-          repo_name="${GITHUB_REPOSITORY#*/}"
-          apk_path="$(find . -path '*/build/outputs/apk/debug/*.apk' -type f | head -n 1)"
+          apk_name="runForest-v${APP_VERSION}-build-${APP_BUILD}-arm64-v8a-debug.apk"
+          apk_path="artifacts/${apk_name}"
 
-          if [ -z "$apk_path" ]; then
-            echo "No debug APK was produced."
+          if [ ! -f "$apk_path" ]; then
+            echo "No debug APK was produced at $apk_path."
             find . -path '*/build/outputs/*' -type f || true
+            find artifacts -type f || true
             exit 1
           fi
 
-          versioned_apk="release/${repo_name}-v${APP_VERSION}-debug.apk"
-          cp "$apk_path" "$versioned_apk"
-
-          echo "APK_PATH=$versioned_apk" >> "$GITHUB_ENV"
+          echo "APK_PATH=$apk_path" >> "$GITHUB_ENV"
 
       - name: Publish downloadable GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          tag: debug-v${{ env.APP_VERSION }}
-          name: Debug APK v${{ env.APP_VERSION }}
+          tag: v${{ env.APP_VERSION }}
+          name: runForest v${{ env.APP_VERSION }}
           body: |
-            Automatically built debug APK from the latest default-branch commit.
+            runForest Android debug APK for v${{ env.APP_VERSION }} build ${{ env.APP_BUILD }}.
 
-            APK file name includes the app version number.
+            APK file name includes version, build, ABI, and build type.
           artifacts: ${{ env.APK_PATH }}
           allowUpdates: true
           replacesArtifacts: true
