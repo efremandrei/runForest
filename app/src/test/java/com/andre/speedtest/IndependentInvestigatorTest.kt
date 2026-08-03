@@ -18,11 +18,11 @@ class IndependentInvestigatorTest {
 
         val result = IndependentInvestigator(client, targets).run(network(validated = true))
 
-        assertEquals(9, result.probeAttempts)
-        assertEquals(3, result.probeFailures)
+        assertEquals(27, result.probeAttempts)
+        assertEquals(9, result.probeFailures)
         assertEquals("High", result.report.confidence)
-        assertTrue(result.report.summary.contains("2/3 HTTPS"))
-        assertEquals(9, client.calls.size)
+        assertTrue(result.report.summary.contains("2/3 HTTPS target profiles"))
+        assertEquals(27, client.calls.size)
     }
 
     @Test
@@ -31,8 +31,8 @@ class IndependentInvestigatorTest {
 
         val result = IndependentInvestigator(client, targets).run(network(validated = true))
 
-        assertEquals(9, client.calls.size)
-        assertEquals(2, result.probeFailures)
+        assertEquals(27, client.calls.size)
+        assertEquals(4, result.probeFailures)
         assertTrue(result.observations.any { it.target == "One" && it.method == "TCP" && it.success })
         assertTrue(result.observations.any { it.target == "Three" && it.method == "HTTPS" && it.success })
     }
@@ -48,6 +48,24 @@ class IndependentInvestigatorTest {
         assertTrue(result.report.evidence.any {
             it.method == "Availability cross-check" && it.status == EvidenceStatus.WARN
         })
+    }
+
+    @Test
+    fun jitterUsesTemporalSamplesNotDestinationSpread() = runTest {
+        val client = FakeProbeClient(
+            latencies = mapOf(
+                "One:TCP" to listOf(20, 22, 21, 23, 22),
+                "Two:TCP" to listOf(80, 81, 82, 80, 81),
+                "Three:TCP" to listOf(150, 151, 149, 150, 151)
+            )
+        )
+
+        val result = IndependentInvestigator(client, targets).run(network(validated = true))
+
+        assertEquals(81, result.latencyMillis)
+        assertEquals(1, result.jitterMillis)
+        assertEquals(128, result.destinationSpreadMillis)
+        assertTrue(result.report.evidence.any { it.method == "Destination spread" })
     }
 
     @Test
@@ -100,9 +118,11 @@ class IndependentInvestigatorTest {
 
 private class FakeProbeClient(
     private val failures: Set<String> = emptySet(),
-    private val throws: Set<String> = emptySet()
+    private val throws: Set<String> = emptySet(),
+    private val latencies: Map<String, List<Long>> = emptyMap()
 ) : IndependentProbeClient {
     val calls = mutableListOf<String>()
+    private val counters = mutableMapOf<String, Int>()
 
     override suspend fun dns(target: DiagnosticTarget) = outcome(target, "DNS", 8)
     override suspend fun tcp(target: DiagnosticTarget) = outcome(target, "TCP", 20)
@@ -114,11 +134,15 @@ private class FakeProbeClient(
         calls += key
         if (key in throws) error("$key synthetic exception")
         val success = key !in failures
+        val scripted = latencies[key]
+        val index = counters.getOrDefault(key, 0)
+        counters[key] = index + 1
+        val selectedLatency = scripted?.getOrElse(index) { scripted.last() } ?: latency
         return ProbeObservation(
             method = method,
             target = target.name,
             success = success,
-            latencyMillis = latency.takeIf { success },
+            latencyMillis = selectedLatency.takeIf { success },
             value = if (success) "ok" else "failed",
             detail = "Synthetic $method outcome."
         )

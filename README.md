@@ -4,10 +4,12 @@
 
 ## Evaluation model
 
-- Default independent diagnosis does not require M-Lab or consent. It checks Cloudflare, Google, and IETF targets separately using DNS, TCP/443, and HTTPS.
+- Default independent diagnosis does not require M-Lab or consent. It checks Cloudflare, Google, and IETF targets separately using DNS, repeated TCP/443 samples, and repeated HTTPS samples.
 - Every target and method continues after failure. A two-of-three HTTPS quorum is cross-compared with Android's own validated/captive-portal state.
-- The independent mode measures connection setup latency and jitter without pretending that a small diagnostic request is a throughput measurement.
-- Android network state: validated internet, captive portal, metered/roaming status, VPN, interface, DNS, Private DNS, estimated link bandwidth, and available Wi-Fi radio details.
+- The independent mode reports per-target median/p95 latency and temporal jitter, while destination-to-destination spread is reported separately.
+- HTTPS probes capture DNS, TCP, TLS, time-to-first-byte, protocol, and remote address timing when Android and OkHttp expose it.
+- Android network state: validated internet, captive portal, metered/roaming status, VPN, interface, local addresses, routes, DNS, Private DNS, MTU, NAT64, HTTP proxy, estimated link bandwidth, and available Wi-Fi radio details.
+- Independent diagnosis records approximate app RX/TX byte deltas for the test using Android TrafficStats when supported.
 - Optional full speed mode uses M-Lab NDT7 after explicit consent.
 - Five idle TCP connection-time samples to the selected M-Lab server.
 - Real M-Lab NDT7 download and upload throughput.
@@ -51,5 +53,5 @@ Update-compatible builds read `runForest.signingStoreFile` from the ignored loca
 APK output:
 
 ```text
-artifacts\runForest-v0.4.0-build-4-arm64-v8a-debug.apk
+artifacts\runForest-v0.5.0-build-5-arm64-v8a-debug.apk
 ```

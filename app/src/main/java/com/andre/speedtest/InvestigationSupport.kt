@@ -257,4 +257,10 @@ internal fun NetworkSnapshot.summary(): String = buildString {
     wifiSignalDbm?.let { append(", wifiRssi=$it dBm") }
     if (interfaceName.isNotBlank()) append(", interface=$interfaceName")
     append(", dnsServers=${dnsServers.size}, privateDns=$privateDnsActive")
+    if (privateDnsServerName.isNotBlank()) append(", privateDnsHost=$privateDnsServerName")
+    if (linkAddresses.isNotEmpty()) append(", addresses=${linkAddresses.size}")
+    if (routes.isNotEmpty()) append(", routes=${routes.size}")
+    if (mtu > 0) append(", mtu=$mtu")
+    if (nat64Prefix.isNotBlank()) append(", nat64=$nat64Prefix")
+    if (httpProxy.isNotBlank()) append(", proxy=$httpProxy")
 }

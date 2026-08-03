@@ -1,5 +1,5 @@
 param(
-    [string]$ApkPath = ".\artifacts\runForest-v0.4.0-build-4-arm64-v8a-debug.apk"
+    [string]$ApkPath = ".\artifacts\runForest-v0.5.0-build-5-arm64-v8a-debug.apk"
 )
 
 $ErrorActionPreference = "Stop"

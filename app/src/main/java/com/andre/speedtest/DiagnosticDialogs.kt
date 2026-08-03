@@ -103,8 +103,13 @@ internal fun DiagnosticsDialog(state: SpeedUiState, actions: SpeedTestViewModel)
                 item { Text("ABI: ${network?.abi ?: "Unknown"}") }
                 item { Text("Network: ${networkSummary(network)}") }
                 item { Text("Interface: ${network?.interfaceName?.ifBlank { "Unknown" } ?: "Unknown"}") }
+                item { Text("Local addresses: ${network?.linkAddresses?.joinToString()?.ifBlank { "Unknown" } ?: "Unknown"}") }
                 item { Text("DNS: ${network?.dnsServers?.joinToString()?.ifBlank { "Unknown" } ?: "Unknown"}") }
-                item { Text("Private DNS: ${network?.privateDnsActive ?: false}") }
+                item { Text("Private DNS: ${network?.privateDnsActive ?: false}${network?.privateDnsServerName?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()}") }
+                item { Text("Routes: ${network?.routes?.joinToString(" | ")?.ifBlank { "Unknown" } ?: "Unknown"}") }
+                item { Text("MTU: ${network?.mtu?.takeIf { it > 0 } ?: "Unknown"}") }
+                item { Text("NAT64: ${network?.nat64Prefix?.ifBlank { "None/unknown" } ?: "None/unknown"}") }
+                item { Text("HTTP proxy: ${network?.httpProxy?.ifBlank { "None" } ?: "None"}") }
                 item { Text("Estimated link: ${network?.estimatedDownstreamMbps ?: 0}/${network?.estimatedUpstreamMbps ?: 0} Mbps") }
                 item { Text("Wi-Fi: RSSI ${network?.wifiSignalDbm ?: "Unknown"} dBm, RX/TX ${network?.wifiRxLinkMbps ?: "?"}/${network?.wifiTxLinkMbps ?: "?"} Mbps, ${network?.wifiFrequencyMhz ?: "?"} MHz") }
                 item { Text("Stage: ${diag?.stage ?: state.stage}") }

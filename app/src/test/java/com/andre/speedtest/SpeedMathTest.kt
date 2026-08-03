@@ -21,6 +21,8 @@ class SpeedMathTest {
         assertEquals(24, SpeedMath.median(listOf(20, 24, 40)))
         assertEquals(15, SpeedMath.median(listOf(5, 10, 20, 40)))
         assertEquals(4, SpeedMath.jitter(listOf(20, 24, 21, 29)))
+        assertEquals(40, SpeedMath.percentile95(listOf(5, 10, 20, 40)))
+        assertEquals(35, SpeedMath.spread(listOf(5, 10, 20, 40)))
     }
 
     @Test

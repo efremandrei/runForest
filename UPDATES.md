@@ -1,5 +1,17 @@
 # Updates
 
+## 0.5.0 build 5
+
+- Reworked independent diagnosis from one latency sample per destination into per-target latency profiles.
+- Runs one DNS check, five TCP/443 samples, and three HTTPS samples for each independent target.
+- Fixes jitter methodology: temporal jitter is now calculated within the same target path, while cross-destination spread is reported separately.
+- Splits HTTPS timing into DNS, TCP, TLS, time-to-first-byte, protocol, and remote-address details when available.
+- Binds independent HTTPS requests to Android's active network when possible, then falls back through the system path.
+- Adds Android link evidence for local addresses, routes, MTU, NAT64, HTTP proxy, and Private DNS hostname.
+- Records approximate app RX/TX byte deltas for independent diagnosis using Android TrafficStats when supported.
+- Expands unit tests for repeated probes, fall-through after failures, and corrected jitter/spread behavior.
+- No paid runtime service, backend, Firebase, advertising, analytics, or paid API was added.
+
 ## 0.4.0 build 4
 
 - Added a default diagnosis mode that works independently of M-Lab.

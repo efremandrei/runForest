@@ -78,6 +78,12 @@ data class NetworkSnapshot(
     val interfaceName: String,
     val dnsServers: List<String>,
     val privateDnsActive: Boolean,
+    val privateDnsServerName: String = "",
+    val linkAddresses: List<String> = emptyList(),
+    val routes: List<String> = emptyList(),
+    val mtu: Int = 0,
+    val nat64Prefix: String = "",
+    val httpProxy: String = "",
     val wifiSignalDbm: Int? = null,
     val wifiRxLinkMbps: Int? = null,
     val wifiTxLinkMbps: Int? = null,
@@ -243,6 +249,18 @@ object SpeedMath {
         return median(values.zipWithNext { first, second -> kotlin.math.abs(second - first) })
     }
 
+    fun percentile95(values: List<Long>): Long {
+        if (values.isEmpty()) return 0
+        val sorted = values.sorted()
+        val index = kotlin.math.ceil(sorted.size * 0.95).toInt().coerceIn(1, sorted.size) - 1
+        return sorted[index]
+    }
+
+    fun spread(values: List<Long>): Long {
+        if (values.size < 2) return 0
+        return values.max() - values.min()
+    }
+
     fun formatMbps(value: Double): String = String.format(Locale.US, "%.1f", value)
 }
 
@@ -272,6 +290,16 @@ object NetworkInspector {
             interfaceName = link?.interfaceName.orEmpty(),
             dnsServers = link?.dnsServers?.map { it.hostAddress ?: it.toString() }.orEmpty(),
             privateDnsActive = link.isPrivateDnsActiveCompat(),
+            privateDnsServerName = link.privateDnsServerNameCompat(),
+            linkAddresses = link?.linkAddresses?.map {
+                "${it.address.hostAddress}/${it.prefixLength}"
+            }.orEmpty(),
+            routes = link?.routes?.map { it.toString() }.orEmpty(),
+            mtu = link.mtuCompat(),
+            nat64Prefix = link.nat64PrefixCompat(),
+            httpProxy = link?.httpProxy?.let { proxy ->
+                "${proxy.host}:${proxy.port}"
+            }.orEmpty(),
             wifiSignalDbm = caps.wifiInfo()?.rssi?.takeIf { it in -126..-1 },
             wifiRxLinkMbps = caps.wifiInfo()?.let {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.rxLinkSpeedMbps else it.linkSpeed
@@ -288,4 +316,13 @@ object NetworkInspector {
 
     private fun LinkProperties?.isPrivateDnsActiveCompat(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && this?.isPrivateDnsActive == true
+
+    private fun LinkProperties?.privateDnsServerNameCompat(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) this?.privateDnsServerName.orEmpty() else ""
+
+    private fun LinkProperties?.nat64PrefixCompat(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) this?.nat64Prefix?.toString().orEmpty() else ""
+
+    private fun LinkProperties?.mtuCompat(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) this?.mtu ?: 0 else 0
 }
