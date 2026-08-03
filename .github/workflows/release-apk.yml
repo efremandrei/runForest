@@ -19,30 +19,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.7
-
-      - name: Build debug APK
-        shell: bash
-        run: |
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-            ./gradlew --no-daemon packageDebugApks
-          else
-            gradle --no-daemon packageDebugApks
-          fi
-
       - name: Read app version
         shell: bash
         run: |
@@ -71,7 +47,7 @@ jobs:
           print(f"APP_BUILD={version_code}")
           PY
 
-      - name: Prepare versioned downloadable APK
+      - name: Prepare committed downloadable APK
         shell: bash
         run: |
           apk_name="runForest-v${APP_VERSION}-build-${APP_BUILD}-arm64-v8a-debug.apk"
@@ -85,6 +61,7 @@ jobs:
           fi
 
           echo "APK_PATH=$apk_path" >> "$GITHUB_ENV"
+          echo "APK_SHA256=$(sha256sum "$apk_path" | awk '{print toupper($1)}')" >> "$GITHUB_ENV"
 
       - name: Publish downloadable GitHub Release
         uses: ncipollo/release-action@v1
@@ -95,6 +72,8 @@ jobs:
             runForest Android debug APK for v${{ env.APP_VERSION }} build ${{ env.APP_BUILD }}.
 
             APK file name includes version, build, ABI, and build type.
+
+            SHA-256: ${{ env.APK_SHA256 }}
           artifacts: ${{ env.APK_PATH }}
           allowUpdates: true
           replacesArtifacts: true
