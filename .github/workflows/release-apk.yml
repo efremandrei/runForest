@@ -55,7 +55,7 @@ jobs:
 
 
       - name: Build and stage arm64 APK
-        run: ./gradlew --no-daemon packageDebugApks
+        run: bash ./gradlew --no-daemon packageDebugApks
 
       - name: Prepare downloadable APK
         shell: bash
