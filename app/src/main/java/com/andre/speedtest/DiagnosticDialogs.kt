@@ -59,12 +59,16 @@ internal fun AboutDialog(actions: SpeedTestViewModel) {
                 Text("Developer: Andrei Efremushkin")
                 Text(
                     "Email: andrei.efr@gmail.com",
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
                     modifier = Modifier.clickable {
                         uriHandler.openUri("mailto:andrei.efr@gmail.com")
                     }
                 )
                 Text(
                     "GitHub: https://github.com/efremandrei/runForest",
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
                     modifier = Modifier.clickable {
                         uriHandler.openUri("https://github.com/efremandrei/runForest")
                     }
