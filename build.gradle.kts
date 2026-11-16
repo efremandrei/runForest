@@ -11,7 +11,7 @@ val runForestVersionName = providers.gradleProperty("runForestVersionName").get(
 tasks.register<Copy>("packageDebugApks") {
     dependsOn(":app:assembleDebug")
     doFirst {
-        delete(fileTree("artifacts") { include("*.apk") })
+        delete(file("artifacts/runForest-v${runForestVersionName}-build-${runForestVersionCode}-arm64-v8a-debug.apk"))
     }
     from("app/build/outputs/apk/debug")
     include("runForest-v${runForestVersionName}-build-${runForestVersionCode}-arm64-v8a-debug.apk")
