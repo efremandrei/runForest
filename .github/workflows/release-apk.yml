@@ -47,7 +47,19 @@ jobs:
           print(f"APP_BUILD={version_code}")
           PY
 
-      - name: Prepare committed downloadable APK
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build and stage arm64 APK
+        run: ./gradlew --no-daemon packageDebugApks
+
+      - name: Prepare downloadable APK
         shell: bash
         run: |
           apk_name="runForest-v${APP_VERSION}-build-${APP_BUILD}-arm64-v8a-debug.apk"
